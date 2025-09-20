@@ -569,201 +569,360 @@ export class AreaCardPlus
   ): (ev: CustomEvent) => void {
     return this._makeActionHandler("sensor", domain, deviceClass);
   }
-
-  // Unified action handler factory for domain/alert/cover/sensor
-  private _makeActionHandler(
-    kind: "domain" | "alert" | "cover" | "sensor" | "custom_button",
-    domain: string,
-    deviceClass?: string,
-    customButton?: any
-  ): (ev: CustomEvent) => void {
-    return (ev: CustomEvent) => {
-      ev.stopPropagation();
-
-      let customization: any;
-      if (kind === "domain") {
-        customization = this._config?.customization_domain?.find(
-          (item: { type: string }) => item.type === domain
-        );
-      } else if (kind === "alert") {
-        customization = this._config?.customization_alert?.find(
-          (item: { type: string }) => item.type === deviceClass
-        );
-      } else if (kind === "cover") {
-        customization = this._config?.customization_cover?.find(
-          (item: { type: string }) => item.type === deviceClass
-        );
-      } else if (kind === "sensor") {
-        customization = this._config?.customization_sensor?.find(
-          (item: { type: string }) => item.type === deviceClass
-        );
-      } else if (kind === "custom_button") {
-        customization = customButton;
+    
+    // Add helper method for service calls
+    private _handleServiceAction(action: any) {
+      // Handle service calls directly
+      let domain, service, serviceData = {};
+      
+      if (action.perform_action) {
+        // New format: perform-action
+        const [serviceDomain, serviceName] = action.perform_action.split('.');
+        domain = serviceDomain;
+        service = serviceName;
+      } else if (action.service) {
+        // Old format: call-service
+        const [serviceDomain, serviceName] = action.service.split('.');
+        domain = serviceDomain;
+        service = serviceName;
       }
-
-      const actionConfig =
-        ev.detail.action === "tap"
-          ? customization?.tap_action
-          : ev.detail.action === "hold"
-          ? customization?.hold_action
-          : ev.detail.action === "double_tap"
-          ? customization?.double_tap_action
-          : null;
-
-      // Domain-specific toggle / more-info behaviour
-      if (kind === "domain") {
-        const isToggle =
-          actionConfig === "toggle" || actionConfig?.action === "toggle";
-        const isMoreInfo =
-          actionConfig === "more-info" || actionConfig?.action === "more-info";
-
-        if (isToggle) {
-          if (domain === "media_player") {
-            this.hass.callService(
-              domain,
-              this._isOn(domain) ? "media_pause" : "media_play",
-              undefined,
-              { area_id: this._config!.area }
-            );
-          } else if (domain === "lock") {
-            this.hass.callService(
-              domain,
-              this._isOn(domain) ? "lock" : "unlock",
-              undefined,
-              { area_id: this._config!.area }
-            );
-          } else if (domain === "vacuum") {
-            this.hass.callService(
-              domain,
-              this._isOn(domain) ? "stop" : "start",
-              undefined,
-              { area_id: this._config!.area }
-            );
-          } else if (TOGGLE_DOMAINS.includes(domain)) {
-            this.hass.callService(
-              domain,
-              this._isOn(domain) ? "turn_off" : "turn_on",
-              undefined,
-              { area_id: this._config!.area }
-            );
+      
+      // Add service data from various possible sources
+      if (action.service_data) {
+        serviceData = { ...serviceData, ...action.service_data };
+      }
+      if (action.data) {
+        serviceData = { ...serviceData, ...action.data };
+      }
+      
+      // Add target information
+      if (action.target) {
+        if (action.target.entity_id) {
+          if (Array.isArray(action.target.entity_id)) {
+            serviceData.entity_id = action.target.entity_id;
+          } else {
+            serviceData.entity_id = [action.target.entity_id];
           }
-          return;
-        } else if (isMoreInfo || actionConfig === undefined) {
-          if (domain !== "binary_sensor" && domain !== "sensor") {
-            if (domain === "climate") {
-              const climateCustomization =
-                this._config?.customization_domain?.find(
-                  (item: { type: string }) => item.type === "climate"
-                );
-              const displayMode = (climateCustomization as any)?.display_mode;
-              if (displayMode === "icon" || displayMode === "text_icon") {
-                this._showPopupForDomain(domain);
-              }
-            } else {
-              this._showPopupForDomain(domain);
-            }
-          }
-          return;
         }
-
-        const config = {
-          tap_action: customization?.tap_action,
-          hold_action: customization?.hold_action,
-          double_tap_action: customization?.double_tap_action,
-        };
-
-        handleAction(this, this.hass!, config, ev.detail.action!);
+        if (action.target.area_id) {
+          serviceData.area_id = action.target.area_id;
+        }
+        if (action.target.device_id) {
+          serviceData.device_id = action.target.device_id;
+        }
+      }
+      
+      console.log(`Calling service: ${domain}.${service}`, serviceData);
+      this.hass.callService(domain, service, serviceData);
+    }
+    // Add this method to handle custom JavaScript execution
+    private _executeCustomAction(customCode: string) {
+      if (!customCode || typeof customCode !== 'string') {
+        console.error('Custom action code is empty or invalid');
         return;
       }
-
-      // Alert / Cover / Sensor behaviour
-      const isMoreInfo =
-        actionConfig === "more-info" || actionConfig?.action === "more-info";
-
-      if (kind === "alert") {
-        if (isMoreInfo || actionConfig === undefined) {
-          if (domain === "binary_sensor") {
-            this._showPopupForDomain(domain, deviceClass);
+      
+      try {
+        // Create a safe execution context with access to common Home Assistant objects
+        const context = {
+          hass: this.hass,
+          config: this._config,
+          states: this.hass.states,
+          entity: (entityId: string) => this.hass.states[entityId],
+          callService: (domain: string, service: string, serviceData?: any) =>
+            this.hass.callService(domain, service, serviceData),
+          navigate: (path: string) => {
+            window.history.pushState(null, '', path);
+            window.dispatchEvent(new CustomEvent('location-changed'));
+          },
+          fireEvent: (type: string, detail?: any) => {
+            this.dispatchEvent(new CustomEvent(type, { detail }));
           }
-          return;
-        }
-      } else if (kind === "cover") {
-        if (isMoreInfo || actionConfig === undefined) {
-          if (domain === "cover") {
-            this._showPopupForDomain(domain, deviceClass);
-          }
-          return;
-        }
-      } else if (kind === "sensor") {
-        if (isMoreInfo) {
-          if (domain === "sensor") {
-            this._showPopupForDomain(domain, deviceClass);
-          }
-          return;
-        }
+        };
+        
+        // Create a function from the custom code with the context
+        const func = new Function(...Object.keys(context), customCode);
+        
+        // Execute the custom code with the context
+        func(...Object.values(context));
+        
+      } catch (error) {
+        console.error('Error executing custom action:', error);
+        // Optionally show a user-friendly error
+        this.hass.callService('system_log', 'write', {
+          message: `Custom button action error: ${error.message}`,
+          level: 'error',
+        });
       }
+    }
+    
+    // Unified action handler factory for domain/alert/cover/sensor
+    private _makeActionHandler(
+      kind: "domain" | "alert" | "cover" | "sensor" | "custom_button",
+      domain: string,
+      deviceClass?: string,
+      customButton?: any
+    ): (ev: CustomEvent) => void {
+      return (ev: CustomEvent) => {
+        try {
+          ev.stopPropagation();
+          let customization: any;
+          if (kind === "domain") {
+            customization = this._config?.customization_domain?.find(
+              (item: { type: string }) => item.type === domain
+            );
+          } else if (kind === "alert") {
+            customization = this._config?.customization_alert?.find(
+              (item: { type: string }) => item.type === deviceClass
+            );
+          } else if (kind === "cover") {
+            customization = this._config?.customization_cover?.find(
+              (item: { type: string }) => item.type === deviceClass
+            );
+          } else if (kind === "sensor") {
+            customization = this._config?.customization_sensor?.find(
+              (item: { type: string }) => item.type === deviceClass
+            );
+          } else if (kind === "custom_button") {
+            customization = customButton;
+          }
 
-      const config = {
-        tap_action: customization?.tap_action,
-        hold_action: customization?.hold_action,
-        double_tap_action: customization?.double_tap_action,
+          const actionConfig =
+            ev.detail.action === "tap"
+              ? customization?.tap_action
+              : ev.detail.action === "hold"
+              ? customization?.hold_action
+              : ev.detail.action === "double_tap"
+              ? customization?.double_tap_action
+              : null;
+
+
+           
+            
+          // Custom button handling - handle this first
+          if (kind === "custom_button") {
+            
+            // If no specific action is configured, don't do anything
+            if (!actionConfig) {
+              return;
+            }
+
+            const config = {
+              tap_action: customization?.tap_action,
+              hold_action: customization?.hold_action,
+              double_tap_action: customization?.double_tap_action,
+            };
+            
+           
+              
+            try {
+                // Handle custom buttons with JavaScript actions
+                if (kind === "custom_button" && actionConfig?.action === "custom") {
+                  //console.log("Custom Button",{actionConfig});
+                  this._executeCustomAction(actionConfig.custom_code);
+                  return;
+                }
+
+                // Handle custom buttons with service calls
+                if (kind === "custom_button" && (actionConfig?.action === "perform-action" || actionConfig?.action === "call-service")) {
+                  //  console.log("Custom Button",{actionConfig});
+                    this._handleServiceAction(actionConfig);
+                  return;
+                }
+                
+                //Not custom, not service or perform-action
+                handleAction(this, this.hass!, config, ev.detail.action!);
+                
+                
+                
+            } catch (error) {
+              console.error("Error in handleAction:", error);
+            }
+            return;
+          }
+
+          // Domain-specific toggle / more-info behaviour
+          if (kind === "domain") {
+            const isToggle =
+              actionConfig === "toggle" || actionConfig?.action === "toggle";
+            const isMoreInfo =
+              actionConfig === "more-info" || actionConfig?.action === "more-info";
+
+            if (isToggle) {
+              if (domain === "media_player") {
+                this.hass.callService(
+                  domain,
+                  this._isOn(domain) ? "media_pause" : "media_play",
+                  undefined,
+                  { area_id: this._config!.area }
+                );
+              } else if (domain === "lock") {
+                this.hass.callService(
+                  domain,
+                  this._isOn(domain) ? "lock" : "unlock",
+                  undefined,
+                  { area_id: this._config!.area }
+                );
+              } else if (domain === "vacuum") {
+                this.hass.callService(
+                  domain,
+                  this._isOn(domain) ? "stop" : "start",
+                  undefined,
+                  { area_id: this._config!.area }
+                );
+              } else if (TOGGLE_DOMAINS.includes(domain)) {
+                this.hass.callService(
+                  domain,
+                  this._isOn(domain) ? "turn_off" : "turn_on",
+                  undefined,
+                  { area_id: this._config!.area }
+                );
+              }
+              return;
+            } else if (isMoreInfo || actionConfig === undefined) {
+              if (domain !== "binary_sensor" && domain !== "sensor") {
+                if (domain === "climate") {
+                  const climateCustomization =
+                    this._config?.customization_domain?.find(
+                      (item: { type: string }) => item.type === "climate"
+                    );
+                  const displayMode = (climateCustomization as any)?.display_mode;
+                  if (displayMode === "icon" || displayMode === "text_icon") {
+                    this._showPopupForDomain(domain);
+                  }
+                } else {
+                  this._showPopupForDomain(domain);
+                }
+              }
+              return;
+            }
+            
+            const config = {
+              tap_action: customization?.tap_action,
+              hold_action: customization?.hold_action,
+              double_tap_action: customization?.double_tap_action,
+            };
+            
+            
+            try {
+                //fell through to here for customization
+                if (actionConfig?.action === "perform-action" || actionConfig?.action === "call-service") {
+                  //  console.log("Custom Button",{actionConfig});
+                    this._handleServiceAction(actionConfig);
+                  return;
+                }
+              handleAction(this, this.hass!, config, ev.detail.action!);
+            } catch (error) {
+              console.error("Error in handleAction for domain:", error);
+            }
+            return;
+          }
+
+          // Alert / Cover / Sensor behaviour
+          const isMoreInfo =
+            actionConfig === "more-info" || actionConfig?.action === "more-info";
+
+          if (kind === "alert") {
+            if (isMoreInfo || actionConfig === undefined) {
+              if (domain === "binary_sensor") {
+                this._showPopupForDomain(domain, deviceClass);
+              }
+              return;
+            }
+          } else if (kind === "cover") {
+            if (isMoreInfo || actionConfig === undefined) {
+              if (domain === "cover") {
+                this._showPopupForDomain(domain, deviceClass);
+              }
+              return;
+            }
+          } else if (kind === "sensor") {
+            if (isMoreInfo) {
+              if (domain === "sensor") {
+                this._showPopupForDomain(domain, deviceClass);
+              }
+              return;
+            }
+          }
+
+          const config = {
+            tap_action: customization?.tap_action,
+            hold_action: customization?.hold_action,
+            double_tap_action: customization?.double_tap_action,
+          };
+          
+          try {
+              if (actionConfig?.action === "perform-action" || actionConfig?.action === "call-service") {
+                //  console.log("Custom Button",{actionConfig});
+                  this._handleServiceAction(actionConfig);
+                return;
+              }
+            handleAction(this, this.hass!, config, ev.detail.action!);
+          } catch (error) {
+            console.error("Error in handleAction for", kind, ":", error);
+          }
+          
+        } catch (error) {
+          console.error("Error in _makeActionHandler:", error);
+        }
       };
-
-      handleAction(this, this.hass!, config, ev.detail.action!);
-    };
-  }
-
-  private renderCustomButtons() {
-    if (
-      !this._config?.custom_buttons ||
-      this._config.custom_buttons.length === 0
-    ) {
-      return nothing;
     }
 
 
-    const designClasses = {
-      v2: this._config?.design === "V2",
-      row: this._config?.layout === "horizontal",
-    };
+    private renderCustomButtons() {
+      if (
+        !this._config?.custom_buttons ||
+        this._config.custom_buttons.length === 0
+      ) {
+        return nothing;
+      }
 
-    return html`
-      <div
-        class="${classMap({
-          custom_buttons: true,
-          ...designClasses,
-        })}"
-      >
-        ${this._config.custom_buttons.map(
-          (btn: any) => {
-            const colorStyle = btn.color
-              ? `color: var(--${btn.color}-color, ${btn.color});`
-              : "";
-            return html`
-              <div
-                class="icon-with-count hover"
-                @action=${this._makeActionHandler(
-                  "custom_button",
-                  "",
-                  undefined,
-                  btn
-                )}
-                .actionHandler=${actionHandler({
-                  hasHold: hasAction(btn.hold_action),
-                  hasDoubleClick: hasAction(btn.double_tap_action),
-                })}
-              >
-                <ha-icon .icon=${btn.icon} style="${colorStyle}"></ha-icon>
-                ${btn.name
-                  ? html`<span class="custom-button-label" style="${colorStyle}">${btn.name}</span>`
-                  : nothing}
-              </div>
-            `;
-          }
-        )}
-      </div>
-    `;
-  }
+      const designClasses = {
+        v2: this._config?.design === "V2",
+        row: this._config?.layout === "horizontal",
+      };
+
+      return html`
+        <div
+          class="${classMap({
+            custom_buttons: true,
+            ...designClasses,
+          })}"
+        >
+          ${this._config.custom_buttons.map(
+            (btn: any) => {
+              const colorStyle = btn.color
+                ? `color: var(--${btn.color}-color, ${btn.color});`
+                : "";
+              return html`
+                <div
+                  class="icon-with-count hover"
+                  @click=${(e: Event) => {
+                    e.stopPropagation();
+                  }}
+                  @action=${this._makeActionHandler(
+                    "custom_button",
+                    "",
+                    "",
+                    btn
+                  )}
+                  .actionHandler=${actionHandler({
+                    hasHold: hasAction(btn.hold_action),
+                    hasDoubleClick: hasAction(btn.double_tap_action),
+                  })}
+                >
+                  <ha-icon .icon=${btn.icon} style="${colorStyle}"></ha-icon>
+                  ${btn.name
+                    ? html`<span class="custom-button-label" style="${colorStyle}">${btn.name}</span>`
+                    : nothing}
+                </div>
+              `;
+            }
+          )}
+        </div>
+      `;
+    }
+
 
   protected render() {
     if (
@@ -933,7 +1092,8 @@ export class AreaCardPlus
             hasDoubleClick: hasAction(this._config.double_tap_action),
           })}
         >
-          <div
+        ${this.renderCustomButtons()}  
+        <div
             class="${classMap({
               right: true,
               ...designClasses,
@@ -1195,8 +1355,8 @@ export class AreaCardPlus
           </div>
 
 
-${this.renderCustomButtons()}
-
+        
+              
           <div class="${classMap({
             bottom: true,
             ...designClasses,
@@ -1235,7 +1395,7 @@ ${this.renderCustomButtons()}
               >
                 ${this._config.area_name || area.name}
               </div>
-
+                            
               <!-- Sensors -->
               <div class="sensors">
                 ${
@@ -1694,7 +1854,8 @@ ${this.renderCustomButtons()}
       }
       .name {
         font-weight: bold;
-        margin-bottom: 8px;
+        margin-bottom: 20px;
+        
       }
       .name.row {
         margin-bottom: 0;
@@ -1710,6 +1871,7 @@ ${this.renderCustomButtons()}
         --mdc-icon-size: 20px;
       }
       .icon-with-count > ha-state-icon,
+      .icon-with-count > ha-icon,
       .icon-with-count > span {
         pointer-events: none;
       }
@@ -1782,28 +1944,54 @@ ${this.renderCustomButtons()}
         top: calc(var(--row-size, 3) * 8px + 12px);
         left: calc(var(--row-size, 3) * 15px + 55px);
       }
-      .custom_buttons {
-        display: flex;
-        flex-direction: row;
-        justify-content: flex-end;
-        align-items: flex-start;
-        position: absolute;
-        bottom: 8px;
-        right: 8px;
-        gap: 7px;
-      }
-      .custom_buttons.row {
-        top: unset;
-      }
-      .v2 .custom_buttons {
-        top: 0px;
-        right: 0px;
-        padding: calc(var(--row-size, 3) * 3px) 8px;
-        min-height: 24px;
-        pointer-events: none;
-        flex-direction: column;
-        bottom: unset;
-      }
+    
+        /*Custom Buttons*/
+        .custom_buttons {
+             display: flex;
+             flex-direction: row;
+             justify-content: flex-start;
+             align-items: flex-start;
+             position: absolute;
+             bottom: 8px;
+             left: 8px;
+             gap: 7px;
+             pointer-events: auto;
+             z-index: 2;
+           }
+           .custom_buttons.row {
+             top: unset;
+           }
+           .mirrored .custom_buttons {
+             left: unset;
+             right: 8px;
+             flex-direction: row-reverse;
+           }
+           .v2 .custom_buttons {
+             top: unset !important;
+             bottom: 8px !important;
+             left: 8px !important;
+             right: unset !important;
+             flex-direction: row !important;
+             padding: 0 !important;
+             min-height: unset !important;
+             pointer-events: auto;
+           }
+           .v2.mirrored .custom_buttons,
+           .mirrored .v2 .custom_buttons {
+             left: unset !important;
+             right: 8px !important;
+             flex-direction: row-reverse !important;
+           }
+           .v2 .custom_buttons .icon-with-count {
+             pointer-events: auto;
+           }
+           
+           .custom-button-label {
+             font-size: 0.8em;
+             margin-left: 4px;
+           }
+    
+    
       .v2 .name {
         margin-bottom: calc(var(--row-size, 3) * 1.5px + 1px);
       }

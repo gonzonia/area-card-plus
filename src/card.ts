@@ -2014,7 +2014,6 @@ export class AreaCardPlus
       @media (max-width: 768px) {
         .name {
           font-weight: bold;
-          margin-bottom: 5px;
         }
       }
     `;

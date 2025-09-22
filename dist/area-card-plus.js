@@ -3485,7 +3485,6 @@ let ce = class extends Es(te) {
       @media (max-width: 768px) {
         .name {
           font-weight: bold;
-          margin-bottom: 5px;
         }
       }
     `;

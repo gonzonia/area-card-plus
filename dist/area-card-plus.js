@@ -2432,6 +2432,34 @@ let X = class extends cs(te) {
   _handleSensorAction(t, e) {
     return this._makeActionHandler("sensor", t, e);
   }
+  // Add this method to handle custom JavaScript execution
+  _executeCustomAction(t) {
+    if (!t || typeof t != "string") {
+      console.error("Custom action code is empty or invalid");
+      return;
+    }
+    try {
+      const e = {
+        hass: this.hass,
+        config: this._config,
+        states: this.hass.states,
+        entity: (s) => this.hass.states[s],
+        callService: (s, o, n) => this.hass.callService(s, o, n),
+        navigate: (s) => {
+          window.history.pushState(null, "", s), window.dispatchEvent(new CustomEvent("location-changed"));
+        },
+        fireEvent: (s, o) => {
+          this.dispatchEvent(new CustomEvent(s, { detail: o }));
+        }
+      };
+      new Function(...Object.keys(e), t)(...Object.values(e));
+    } catch (e) {
+      console.error("Error executing custom action:", e), this.hass.callService("system_log", "write", {
+        message: `Custom button action error: ${e.message}`,
+        level: "error"
+      });
+    }
+  }
   _makeActionHandler(t, e, i, s) {
     return (o) => {
       var d, l, u, m, h, p, f, _, b, y;
@@ -2447,6 +2475,14 @@ let X = class extends cs(te) {
         (v) => v.type === i
       ) : t === "custom_button" && (n = s);
       const a = o.detail.action === "tap" ? n == null ? void 0 : n.tap_action : o.detail.action === "hold" ? n == null ? void 0 : n.hold_action : o.detail.action === "double_tap" ? n == null ? void 0 : n.double_tap_action : null;
+      if (t === "custom_button" && (a == null ? void 0 : a.action) === "custom")
+        try {
+          this._executeCustomAction(a.custom_code);
+          return;
+        } catch (v) {
+          console.error("Error in handleAction:", v);
+          return;
+        }
       if (t === "domain") {
         const v = a === "toggle" || (a == null ? void 0 : a.action) === "toggle", g = a === "more-info" || (a == null ? void 0 : a.action) === "more-info";
         if (v) {
@@ -3338,6 +3374,7 @@ let X = class extends cs(te) {
         --mdc-icon-size: 20px;
       }
       .icon-with-count > ha-state-icon,
+      .icon-with-count > ha-icon, 
       .icon-with-count > span {
         pointer-events: none;
       }

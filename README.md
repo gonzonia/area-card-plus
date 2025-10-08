@@ -1,3 +1,8 @@
+<a name="top"></a>
+This is a fork of the Area Card Plus created by <a href="https://github.com/xbourner">xbourner</a>. I wanted to add cusom buttons with ability to execute scripts and launch scenes. This also turned into the ability execute JS so that a script could be launched and  the dashboard changed from a single click. This write up is a slightly modified version of what <a href="https://github.com/xbourner">xbourner</a> wrote on the main README.
+
+The fork was developed with the assistance of AI tools. I found Claude to be the best at generating working code.
+
 <h1 id="top">Area Card Plus</h1>
 
 [![(https://hacs.xyz)](https://img.shields.io/badge/hacs-default-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
@@ -10,8 +15,9 @@
 
 # Support my work
 
-If you like my work it would be nice if you support it. You don't have to but this will keep me motivated and i will appreciate it much! <br>
-You can also join my Discord Server to leave a feedback, get help or contribute with ideas :) 
+This card was developed by <a href="https://github.com/xbourner">xbourner</a>. If you like the card, it would be nice to support it!  You don't have to but this will keep xbourner motivated and xbourner will appreciate it much! <br>
+
+You can also join xbourner Discord Server to leave feedback, get help or contribute with ideas :) 
 
 [![Discord](https://img.shields.io/discord/1341456711835455609?style=for-the-badge&logo=discord&logoColor=%237289da&label=Discord&color=%237289da)](https://discord.gg/RfVx7hmZD3)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?&logo=buy-me-a-coffee&logoColor=black&style=for-the-badge)](https://www.buymeacoffee.com/bourner)
@@ -22,11 +28,11 @@ You can also join my Discord Server to leave a feedback, get help or contribute 
 
 An **Area Card** for your Home Assistant Dashboard
 
-I always thought the area card has so much more potential so i made my own one. <br>
+xbourner always thought the area card has so much more potential so xbourner made their own one. <br>
 The card will show all entities/devices grouped into domains or device classes that are linked to your area. <br>
 To make sure this card will work like it should please check if your relevant entities are assigned to the correct domain.
 
-This card i highly influenced by [Dwains Dashboard](https://github.com/dwainscheeren/dwains-lovelace-dashboard). So now you can use this great idea as a single card in all of your Dashboards
+This card is highly influenced by [Dwains Dashboard](https://github.com/dwainscheeren/dwains-lovelace-dashboard). So now you can use this great idea as a single card in all of your Dashboards
 
 <p align="center">
   <img alt="Light" src="https://raw.githubusercontent.com/xbourner/area-card-plus/main/.github/img/area-single-light.png" width="49%">
@@ -93,6 +99,31 @@ The card needs to work with your areas so you need to assign your relevant devic
 ### Configuration:
 
 See more in [Wiki](https://github.com/xBourner/area-card-plus/wiki)
+
+
+### Experimental
+This feature is experimental and YAML only. This is only available in this fork. 
+
+```yaml
+custom_buttons:                          # change it to the icon you want
+  - icon: mdi:apple                    
+    tap_action:
+      action: custom                    # set action to custom to use JS
+      custom_code: >                    
+        hass.callService('script', 'turn_on', { entity_id:
+        'script.livingroomtoggleappletv' }); window.history.pushState(null, '',
+        '/a-v-main/living-room-apple'); wind
+```
+
+The custom_code field accepts JavaScript as a string. The system takes that string and executes it using JavaScript's Function constructor with a safe execution context. The execution context provides these variables/functions that you can use in your JavaScript:
+
+hass - Full Home Assistant object for service calls, state access, etc. <br>
+config - The card's configuration <br>
+states - All entity states (hass.states) <br>
+entity(entityId) - Helper to get a specific entity state <br>
+callService(domain, service, data) - Direct service call helper <br>
+navigate(path) - Navigation helper <br>
+fireEvent(type, detail) - Custom event helper
 
 # Feedback
 

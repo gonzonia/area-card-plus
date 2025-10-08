@@ -30,6 +30,8 @@ import {
   mdiEye,
   mdiEyeOff,
   mdiGestureTapButton,
+  mdiEyeOutline,
+  mdiEyeOffOutline,
 } from "@mdi/js";
 import "./items-editor";
 import "./item-editor";
@@ -78,77 +80,35 @@ export class AreaCardPlusEditor
         "none",
       ];
 
-      const icons = [
-        {
-          value: "icon",
-          label: localize("ui.panel.lovelace.editor.card.generic.icon"),
-        },
-        {
-          value: "image",
-          label: localize("ui.components.selectors.image.image"),
-        },
-        {
-          value: "icon + image",
-          label: `${localize(
-            "ui.panel.lovelace.editor.card.generic.icon"
-          )} & ${localize("ui.components.selectors.image.image")}`,
-        },
-      ];
-
       return [
         { name: "area", selector: { area: {} } },
+
         {
           name: "appearance",
           flatten: true,
           type: "expandable",
           icon: "mdi:palette",
           schema: [
-            { name: "theme", required: false, selector: { theme: {} } },
-            {
-              name: "layout",
-              required: true,
-              selector: {
-                select: {
-                  mode: "box",
-                  options: ["vertical", "horizontal"].map((value) => ({
-                    label: localize(
-                      `ui.panel.lovelace.editor.card.tile.content_layout_options.${value}`
-                    ),
-                    value,
-                  })),
-                },
-              },
-            },
-            {
-              name: "design",
-              selector: {
-                select: { mode: "box", options: ["V1", "V2"] },
-              },
-            },
-            ...(designVersion === "V2"
-              ? ([
-                  {
-                    name: "v2_color",
-                    selector: {
-                      color_rgb: {
-                        default_color: "state",
-                        include_state: true,
-                      },
-                    },
-                  },
-                ] as const)
-              : []),
-            { name: "mirrored", selector: { boolean: {} } },
-
             {
               name: "",
               type: "grid",
               schema: [
-                { name: "name", selector: { text: {} } },
-                { name: "color", selector: { ui_color: {} } },
+                { name: "area_name", selector: { text: {} } },
+                {
+                  name: "area_name_color",
+                  selector: {
+                    ui_color: { default_color: "state", include_state: true },
+                  },
+                },
+                { name: "area_icon", selector: { icon: {} } },
+                {
+                  name: "area_icon_color",
+                  selector: {
+                    ui_color: { default_color: "state", include_state: true },
+                  },
+                },
                 {
                   name: "display_type",
-                  required: true,
                   selector: {
                     select: {
                       options: [
@@ -166,7 +126,6 @@ export class AreaCardPlusEditor
                             return "ui.components.selectors.image.image";
                           if (p === "camera")
                             return `ui.panel.lovelace.editor.card.area.display_type_options.camera`;
-                          // fallback to the original compound key
                           return `ui.panel.lovelace.editor.card.area.display_type_options.${part}`;
                         };
 
@@ -201,20 +160,47 @@ export class AreaCardPlusEditor
                   : []),
               ],
             },
-            { name: "area_icon", selector: { icon: {} } },
+            { name: "mirrored", selector: { boolean: {} } },
             {
-              name: "area_icon_color",
+              name: "layout",
+              required: true,
               selector: {
-                ui_color: { default_color: "state", include_state: true },
+                select: {
+                  mode: "box",
+                  options: ["vertical", "horizontal"].map((value) => ({
+                    label: this.hass!.localize(
+                      `ui.panel.lovelace.editor.card.tile.content_layout_options.${value}`
+                    ),
+                    value,
+                    image: {
+                      src: `/static/images/form/tile_content_layout_${value}.svg`,
+                      src_dark: `/static/images/form/tile_content_layout_${value}_dark.svg`,
+                      flip_rtl: true,
+                    },
+                  })),
+                },
               },
             },
-            { name: "area_name", selector: { text: {} } },
             {
-              name: "area_name_color",
+              name: "design",
               selector: {
-                ui_color: { default_color: "state", include_state: true },
+                select: { mode: "box", options: ["V1", "V2"] },
               },
             },
+            ...(designVersion === "V2"
+              ? ([
+                  {
+                    name: "v2_color",
+                    selector: {
+                      color_rgb: {
+                        default_color: "state",
+                        include_state: true,
+                      },
+                    },
+                  },
+                ] as const)
+              : []),
+            { name: "theme", required: false, selector: { theme: {} } },
             {
               name: "css",
               flatten: true,
@@ -697,6 +683,23 @@ export class AreaCardPlusEditor
     fireEvent(this, "config-changed", { config: this._config });
   };
 
+  private _isExcludedEntity(entity_id: string): boolean {
+    const list = this._config?.excluded_entities ?? [];
+    return Array.isArray(list) && list.includes(entity_id);
+  }
+
+  private _toggleEntityExcluded = (entity_id: string) => {
+    const current = new Set(this._config?.excluded_entities ?? []);
+    if (current.has(entity_id)) current.delete(entity_id);
+    else current.add(entity_id);
+    const excluded_entities = Array.from(current);
+    this._config = {
+      ...(this._config || ({} as any)),
+      excluded_entities,
+    } as LovelaceCardConfig;
+    fireEvent(this, "config-changed", { config: this._config });
+  };
+
   private _hiddenCategoryChanged(ev: CustomEvent) {
     const val = ev.detail?.value?.category_filter;
     this._config = {
@@ -834,7 +837,7 @@ export class AreaCardPlusEditor
     if (!this._config || !this.hass) {
       return;
     }
-    const updatedButtons = ev.detail; // Changed from ev.detail.value
+    const updatedButtons = ev.detail;
     fireEvent(this, "config-changed", {
       config: { ...this._config, custom_buttons: updatedButtons },
     });
@@ -1385,7 +1388,6 @@ export class AreaCardPlusEditor
               ${this.computeLabel({ name: "hidden_entities" })}
             </div>
             <div class="content">
-              <!-- Category filter selector for hidden entities -->
               <ha-form
                 .hass=${this.hass}
                 .data=${{ category_filter: this._config?.category_filter }}
@@ -1443,8 +1445,8 @@ export class AreaCardPlusEditor
                                         </span>
                                         <ha-icon-button
                                           .path=${this._isHiddenEntity(id)
-                                            ? mdiEye
-                                            : mdiEyeOff}
+                                            ? mdiEyeOff
+                                            : mdiEye}
                                           .label=${this._isHiddenEntity(id)
                                             ? this.hass.localize(
                                                 "ui.common.show"
@@ -1454,6 +1456,16 @@ export class AreaCardPlusEditor
                                               ) ?? "Hide"}
                                           @click=${() =>
                                             this._toggleEntityHidden(id)}
+                                        ></ha-icon-button>
+                                        <ha-icon-button
+                                          .path=${this._isExcludedEntity(id)
+                                            ? mdiEyeOffOutline
+                                            : mdiEyeOutline}
+                                          .label=${this._isExcludedEntity(id)
+                                            ? "Include"
+                                            : "Exclude"}
+                                          @click=${() =>
+                                            this._toggleEntityExcluded(id)}
                                         ></ha-icon-button>
                                       </div>
                                     `
@@ -1471,14 +1483,23 @@ export class AreaCardPlusEditor
                                 </span>
                                 <ha-icon-button
                                   .path=${this._isHiddenEntity(id)
-                                    ? mdiEye
-                                    : mdiEyeOff}
+                                    ? mdiEyeOff
+                                    : mdiEye}
                                   .label=${this._isHiddenEntity(id)
                                     ? this.hass.localize("ui.common.show") ??
                                       "Show"
                                     : this.hass.localize("ui.common.hide") ??
                                       "Hide"}
                                   @click=${() => this._toggleEntityHidden(id)}
+                                ></ha-icon-button>
+                                <ha-icon-button
+                                  .path=${this._isExcludedEntity(id)
+                                    ? mdiEyeOffOutline
+                                    : mdiEyeOutline}
+                                  .label=${this._isExcludedEntity(id)
+                                    ? "Include"
+                                    : "Exclude"}
+                                  @click=${() => this._toggleEntityExcluded(id)}
                                 ></ha-icon-button>
                               </div>
                             `

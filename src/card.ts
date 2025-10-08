@@ -593,6 +593,49 @@ export class AreaCardPlus
   ): (ev: CustomEvent) => void {
     return this._makeActionHandler("sensor", domain, deviceClass);
   }
+    
+    // Add this method to handle custom JavaScript execution
+  private _executeCustomAction(customCode: string) {
+      //console.log("Execute Custom Button",{customCode});
+      if (!customCode || typeof customCode !== 'string') {
+        console.error('Custom action code is empty or invalid');
+        return;
+      }
+      
+      try {
+        // Create a safe execution context with access to common Home Assistant objects
+        const context = {
+          hass: this.hass,
+          config: this._config,
+          states: this.hass.states,
+          entity: (entityId: string) => this.hass.states[entityId],
+          callService: (domain: string, service: string, serviceData?: any) =>
+            this.hass.callService(domain, service, serviceData),
+          navigate: (path: string) => {
+            window.history.pushState(null, '', path);
+            window.dispatchEvent(new CustomEvent('location-changed'));
+          },
+          fireEvent: (type: string, detail?: any) => {
+            this.dispatchEvent(new CustomEvent(type, { detail }));
+          }
+        };
+        
+        // Create a function from the custom code with the context
+        const func = new Function(...Object.keys(context), customCode);
+        
+        // Execute the custom code with the context
+        func(...Object.values(context));
+        
+      } catch (error) {
+        console.error('Error executing custom action:', error);
+        // Optionally show a user-friendly error
+        this.hass.callService('system_log', 'write', {
+          message: `Custom button action error: ${error.message}`,
+          level: 'error',
+        });
+      }
+  }
+
 
   private _makeActionHandler(
     kind: "domain" | "alert" | "cover" | "sensor" | "custom_button",
@@ -633,6 +676,19 @@ export class AreaCardPlus
           ? customization?.double_tap_action
           : null;
 
+      //process custom action for custom-buttons
+      if (kind === "custom_button" && actionConfig?.action === "custom") {
+        try {
+            // Handle custom buttons with JavaScript actions
+           // console.log("Custom Button",{actionConfig});
+            this._executeCustomAction(actionConfig.custom_code);
+            return;
+          } catch (error) {
+              console.error("Error in handleAction:", error);
+              return;
+          }
+      }
+        
       if (kind === "domain") {
         const isToggle =
           actionConfig === "toggle" || actionConfig?.action === "toggle";
@@ -1990,6 +2046,7 @@ export class AreaCardPlus
         --mdc-icon-size: 20px;
       }
       .icon-with-count > ha-state-icon,
+      .icon-with-count > ha-icon, 
       .icon-with-count > span {
         pointer-events: none;
       }

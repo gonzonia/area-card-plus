@@ -1,6 +1,42 @@
 import { handleAction, hasAction } from "./ha";
 import { actionHandler } from "./ha";
 
+// CUSTOM BUTTON INTEGRATION: Add custom JavaScript execution function
+export const executeCustomAction = (card: any, customCode: string) => {
+if (!customCode || typeof customCode !== 'string') {
+    console.error('Custom action code is empty or invalid');
+    return;
+  }
+
+  try {
+    const context = {
+      hass: card.hass,
+      config: card._config,
+      states: card.hass.states,
+      entity: (entityId: string) => card.hass.states[entityId],
+      callService: (domain: string, service: string, serviceData?: any) =>
+        card.hass.callService(domain, service, serviceData),
+      navigate: (path: string) => {
+        window.history.pushState(null, '', path);
+        window.dispatchEvent(new CustomEvent('location-changed'));
+      },
+      fireEvent: (type: string, detail?: any) => {
+        card.dispatchEvent(new CustomEvent(type, { detail }));
+      }
+    };
+
+    const func = new Function(...Object.keys(context), customCode);
+    func(...Object.values(context));
+
+  } catch (error) {
+    console.error('Error executing custom action:', error);
+    card.hass.callService('system_log', 'write', {
+      message: `Custom button action error: ${(error as Error).message}`,
+      level: 'error',
+    });
+  }
+};
+
 export const handleDomainAction = (
   card: any,
   domain: string
@@ -92,6 +128,17 @@ export const makeActionHandler = (
             ? customization?.double_tap_action
             : null;
 
+    // CUSTOM BUTTON INTEGRATION: Handle custom JavaScript execution
+    if (kind === "custom_button" && actionConfig?.action === "custom") {
+      try {
+        executeCustomAction(card, actionConfig.custom_code);
+        return;
+      } catch (error) {
+        console.error("Error in custom button action:", error);
+        return;
+      }
+    }
+
     if (kind === "domain") {
       const isToggle =
         actionConfig === "toggle" || actionConfig?.action === "toggle";
@@ -102,28 +149,68 @@ export const makeActionHandler = (
         if (domain === "media_player") {
           card.hass.callService(
             domain,
-            card._isOn(domain) ? "media_pause" : "media_play",
+            card._isOn(domain, undefined, card._getOrganizedEntities(
+              card._getAreaEntityIds(
+                card._config.area,
+                card._devicesInArea(card._config.area, card.hass.devices),
+                card.hass.entities,
+                card._hiddenEntitiesSet,
+                card._config.label
+              ),
+              card.hass.states,
+              card._deviceClasses
+            ).byDomain) ? "media_pause" : "media_play",
             undefined,
             { area_id: card._config!.area }
           );
         } else if (domain === "lock") {
           card.hass.callService(
             domain,
-            card._isOn(domain) ? "lock" : "unlock",
+            card._isOn(domain, undefined, card._getOrganizedEntities(
+              card._getAreaEntityIds(
+                card._config.area,
+                card._devicesInArea(card._config.area, card.hass.devices),
+                card.hass.entities,
+                card._hiddenEntitiesSet,
+                card._config.label
+              ),
+              card.hass.states,
+              card._deviceClasses
+            ).byDomain) ? "lock" : "unlock",
             undefined,
             { area_id: card._config!.area }
           );
         } else if (domain === "vacuum") {
           card.hass.callService(
             domain,
-            card._isOn(domain) ? "stop" : "start",
+            card._isOn(domain, undefined, card._getOrganizedEntities(
+              card._getAreaEntityIds(
+                card._config.area,
+                card._devicesInArea(card._config.area, card.hass.devices),
+                card.hass.entities,
+                card._hiddenEntitiesSet,
+                card._config.label
+              ),
+              card.hass.states,
+              card._deviceClasses
+            ).byDomain) ? "stop" : "start",
             undefined,
             { area_id: card._config!.area }
           );
         } else {
           card.hass.callService(
             domain,
-            card._isOn(domain) ? "turn_off" : "turn_on",
+            card._isOn(domain, undefined, card._getOrganizedEntities(
+              card._getAreaEntityIds(
+                card._config.area,
+                card._devicesInArea(card._config.area, card.hass.devices),
+                card.hass.entities,
+                card._hiddenEntitiesSet,
+                card._config.label
+              ),
+              card.hass.states,
+              card._deviceClasses
+            ).byDomain) ? "turn_off" : "turn_on",
             undefined,
             { area_id: card._config!.area }
           );
@@ -192,6 +279,7 @@ export const makeActionHandler = (
       double_tap_action: customization?.double_tap_action,
     };
 
+    // CUSTOM BUTTON INTEGRATION: Handle more-info for entity-based custom buttons
     if (kind === "custom_button" && customButton?.entity) {
       if (isMoreInfo) {
         const entityId = customButton.entity;

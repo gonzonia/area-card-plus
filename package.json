@@ -1,6 +1,6 @@
 {
   "name": "area-card-plus",
-  "version": "v1.2a",
+  "version": "v.07",
   "type": "module",
   "devDependencies": {
     "esbuild": "^0.28.0",

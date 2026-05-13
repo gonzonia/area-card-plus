@@ -1,4 +1,4 @@
-const Ss = "v1.1a", Os = {
+const Ss = "v1.2a", Os = {
   version: Ss
 };
 /**
@@ -4117,7 +4117,6 @@ const In = L(() => [{ name: "area", selector: { area: {} } }]), zn = L(
     "navigate",
     "url",
     "perform-action",
-    "custom",
     "none"
   ];
   return [
@@ -4517,6 +4516,7 @@ const fs = [
   "navigate",
   "url",
   "perform-action",
+  "custom",
   "none"
 ], Kn = [
   "more-info",

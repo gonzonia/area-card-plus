@@ -20,6 +20,7 @@ const ACTIONS: UiAction[] = [
   "navigate",
   "url",
   "perform-action",
+  "custom",
   "none",
 ];
 

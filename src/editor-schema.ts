@@ -192,7 +192,6 @@ export const getActionsSchema = memoizeOne(() => {
     "navigate",
     "url",
     "perform-action",
-    "custom",
     "none",
   ];
 
